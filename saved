@@ -1,0 +1,84 @@
+First off, your 2 functions are a little more complicated than they need to be. They can be simplified.
+
+For instance, the whole SIZE and LIMIT handling in send_data() can be removed since you are sending the data buffer directly, so just give send() as many bytes as are in data and let send() tell you how many bytes it actually accepted.
+
+But more importantly, receive_data() needs to take the size of the input buffer into account. You are just blindly reading without any notion of how much data is actually being sent. You are passing a variable-length string to send_data(), which could easily exceed whatever buffer size the caller of receive_data() is expecting.
+
+Also, you are lacking any error handling at all.
+
+Try something more like this instead:
+
+int send_data(int sockfd, const void *buffer, size_t bufsize)
+{
+    const char *pbuffer = (const char*) buffer;
+    while (bufsize > 0)
+    {
+        int n = send(sockfd, pbuffer, bufsize, 0);
+        if (n < 0) return -1;
+        pbuffer += n;
+        bufsize -= n;
+    }
+    return 0;
+}
+
+int receive_data(int sockfd, void *buffer, size_t bufsize)
+{
+    char *pbuffer = (char*) buffer;
+    while (bufsize > 0)
+    {
+        int n = recv(sockfd, pbuffer, bufsize, 0);
+        if (n <= 0) return n;
+        pbuffer += n;
+        bufsize -= n;
+    }
+    return 1;
+}
+Then you can build other functions on top of those. For example, sending a string's length as an integer before sending its characters, eg:
+
+int send_int32(int sockfd, int32_t data)
+{
+    data = htonl(data);
+    return send_data(sockfd, &data, sizeof(data));
+}
+
+int receive_int32(int sockfd, int32_t *data)
+{
+    int ret = receive_data(sockfd, data, sizeof(*data));
+    if (ret <= 0) *data = 0;
+    else *data = ntohl(*data);
+    return ret;
+}
+
+int send_str(int sockfd, const char *data)
+{
+    int32_t size = strlen(data);
+    int ret = send_int32(sockfd, size);
+    if (ret == 0) ret = send_data(sockfd, data, size);
+    return ret;
+}
+
+int receive_str(int sockfd, char **data)
+{
+    *data = NULL;
+    int32_t size;
+    int ret = receive_int32(sockfd, &size);
+    if (ret > 0) {
+        *data = malloc(size+1);
+        if (*data == NULL) return -1;
+        ret = receive_data(sockfd, *data, size);
+        if (ret <= 0) {
+            free(*data);
+            *data = NULL;
+        }
+        else {
+            (*data)[size] = '\0';
+        }
+    }
+    return ret;
+}
+send_str(sockfd, "Hello World!");
+char *str;
+if (receive_str(sockfd, &str) > 0) {
+    ...
+    free(str);
+}
