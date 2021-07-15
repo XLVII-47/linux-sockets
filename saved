@@ -1,12 +1,4 @@
-First off, your 2 functions are a little more complicated than they need to be. They can be simplified.
 
-For instance, the whole SIZE and LIMIT handling in send_data() can be removed since you are sending the data buffer directly, so just give send() as many bytes as are in data and let send() tell you how many bytes it actually accepted.
-
-But more importantly, receive_data() needs to take the size of the input buffer into account. You are just blindly reading without any notion of how much data is actually being sent. You are passing a variable-length string to send_data(), which could easily exceed whatever buffer size the caller of receive_data() is expecting.
-
-Also, you are lacking any error handling at all.
-
-Try something more like this instead:
 
 int send_data(int sockfd, const void *buffer, size_t bufsize)
 {
